@@ -1,0 +1,17 @@
+log
+logs
+ebin
+deps
+*~
+erl_crash.dump
+.eunit
+plts
+dev.config
+build
+debmake
+gproc_dist*
+.tags*
+*.sublime-workspace
+.DS_Store
+fprof.*
+*.log
