@@ -6,7 +6,7 @@ DIALYZER = dialyzer
 CONFIG ?= dev.config
 CONFIG_TESTS ?= $(shell ls tests.config 2>/dev/null || echo $(CONFIG))
 
-.PHONY: all compile deps clean distclean test eunit release deploy
+.PHONY: all compile deps clean distclean test eunit
 
 all: compile
 

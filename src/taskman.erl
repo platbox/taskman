@@ -8,7 +8,7 @@
 %%
 
 -export([start_link/1]).
--export([child_spec/2]).
+-export([child_spec/1]).
 
 -export([invoke/2]).
 -export([complete/2]).
@@ -41,17 +41,11 @@
 start_link(Name) ->
     supervisor:start_link(Name, ?MODULE, []).
 
-%%
+-spec child_spec([{}]) -> supervisor:child_spec().
 
-child_spec(Name, Registry) ->
-    {
-        Name,
-        {taskman, start_link, [{Registry, taskman}]},
-        permanent,
-        infinity,
-        supervisor,
-        [taskman]
-    }.
+child_spec(Options) ->
+    taskman_sup:child_spec(Options).
+%%
 
 -spec invoke(module(), term()) -> {ok, pid(), Result :: any()} | {error, any()}.
 
@@ -141,7 +135,6 @@ start_task(finish, TaskID, Module, Result) ->
     proc_lib:start_link(?MODULE, init_finish_task, [self(), TaskID, Module, Result]).
 
 init_task(Parent, Module, Options) ->
-    io:format(user, "~nGOT HERE ~p~n", [{Parent, Module, Options}]),
     lager:info("task started up"),
     try Module:task_init(Options) of
         Ok when ?is_ok(Ok) ->

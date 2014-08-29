@@ -6,7 +6,6 @@
 -behaviour(gen_server).
 
 %%
--export([child_spec/2]).
 -export([start_link/1]).
 -export([finish_after/4]).
 -export([finish_after/5]).
@@ -22,16 +21,6 @@
 
 start_link(Name) ->
     gen_server:start_link(Name, ?MODULE, [], []).
-
-child_spec(Name, Registry) ->
-    {
-        Name,
-        {taskman_task_killer, start_link, [{Registry, taskman_task_killer}]},
-        permanent,
-        infinity,
-        supervisor,
-        [taskman_task_killer]
-    }.
 
 -spec finish_after(server_ref(), taskman_task:task_id(), module(), timeout()) -> reference() | undefined.
 

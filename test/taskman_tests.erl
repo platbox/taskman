@@ -15,12 +15,11 @@ taskman_test_() ->
         spawn,
         fun() ->
             _ = process_flag(trap_exit, true),
-            Apps = start_application(gproc),
-            {ok, SupPid} = taskman_test_sup:start_link(options()),
-            {Apps, SupPid}
+            Apps = start_application(gproc) ++ start_application(lager),
+            _ = taskman_sup:start_link(options()), %%Don't it to exit this process, will die after the test
+            Apps
         end,
-        fun({Apps, SupPid}) ->
-            erlang:exit(SupPid, shutdown),
+        fun(Apps) ->
             application_stop(Apps)
         end,
         fun(_) ->

@@ -2,7 +2,6 @@
     {description, "Taskman application"},
     {vsn, "0.1"},
     {registered, []},
-    {mod, {taskman, []}},
     {applications, [
         kernel,
         stdlib,
