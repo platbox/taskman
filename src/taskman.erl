@@ -24,10 +24,10 @@
 %% Internals
 
 -export([init/1]).
--export([start_task/3]).
--export([init_task/3]).
 -export([start_task/4]).
--export([init_finish_task/4]).
+-export([init_task/4]).
+-export([start_task/5]).
+-export([init_finish_task/5]).
 
 %%
 
@@ -50,7 +50,26 @@ child_spec(Options) ->
 -spec invoke(module(), term()) -> {ok, pid(), Result :: any()} | {error, any()}.
 
 invoke(Module, Options) ->
-    supervisor:start_child(?MODULE, [invoke, Module, Options]).
+    invoke_task(invoke, [Module, Options]).
+
+invoke_task(Type, Options) ->
+    case supervisor:start_child(?MODULE, [Type, self()] ++ Options) of
+        {ok, Pid} ->
+            wait_init_result(Pid);
+        Error ->
+            Error
+    end.
+
+wait_init_result(TaskPid) ->
+    MRef = monitor(process, TaskPid),
+    Result = receive
+        {?MODULE, TaskPid, init_done, InitResult} ->
+            InitResult;
+        {'DOWN', MRef, process, TaskPid, Reason} ->
+            {error, {unexpected_init_failure, Reason}}
+    end,
+    erlang:demonitor(MRef, [flush]),
+    Result.
 
 -spec complete(module(), term()) -> task_result().
 
@@ -62,18 +81,23 @@ complete(Module, Options) ->
 complete(Module, Options, Timeout) ->
     case invoke(Module, Options) of
         {ok, Pid, _Result} ->
-            MRef = monitor(process, Pid),
-            receive
-                {'DOWN', MRef, process, Pid, {shutdown, Result}} ->
-                    Result;
-                {'DOWN', MRef, process, Pid, Reason} ->
-                    {error, {unexpected, Reason}}
-            after Timeout ->
-                {error, timeout}
-            end;
+            join_pid(Pid, Timeout);
         Error ->
             Error
     end.
+
+join_pid(Pid, Timeout) ->
+    MRef = monitor(process, Pid),
+    Result = receive
+        {'DOWN', MRef, process, Pid, {shutdown, TaskResult}} ->
+            TaskResult;
+        {'DOWN', MRef, process, Pid, Reason} ->
+            {error, {unexpected, Reason}}
+    after Timeout ->
+        {error, timeout}
+    end,
+    erlang:demonitor(MRef, [flush]),
+    Result.
 
 -spec lookup(task_id()) -> pid() | undefined.
 
@@ -94,7 +118,7 @@ kill(TaskID) ->
 -spec finish(task_id(), module(), Result :: any()) -> {ok, pid(), Result :: any()} | {error, any()}.
 
 finish(TaskID, Module, Result) ->
-    supervisor:start_child(?MODULE, [finish, TaskID, Module, Result]).
+    invoke_task(finish, [TaskID, Module, Result]).
 
 %%
 
@@ -128,13 +152,17 @@ init([]) ->
 -define (is_ok(T), (T =:= ok orelse element(1, T) =:= ok)).
 -define (is_error(T), (element(1, T) =:= error)).
 
-start_task(invoke, Module, Options) ->
-    proc_lib:start_link(?MODULE, init_task, [self(), Module, Options]).
+-spec start_task(atom(), pid(), atom(), list()) -> {ok, pid()}.
+start_task(invoke, Parent, Module, Options) ->
+    proc_lib:start_link(?MODULE, init_task, [self(), Parent, Module, Options]).
 
-start_task(finish, TaskID, Module, Result) ->
-    proc_lib:start_link(?MODULE, init_finish_task, [self(), TaskID, Module, Result]).
+-spec start_task(atom(), pid(), term(), atom(), list()) -> {ok, pid()}.
+start_task(finish, Parent, TaskID, Module, Result) ->
+    proc_lib:start_link(?MODULE, init_finish_task, [self(), Parent, TaskID, Module, Result]).
 
-init_task(Parent, Module, Options) ->
+-spec init_task(pid(), pid(), atom(), list()) -> term().
+init_task(ProxyPid, Parent, Module, Options) ->
+    release_supervisor(ProxyPid),
     lager:info("task started up"),
     try Module:task_init(Options) of
         Ok when ?is_ok(Ok) ->
@@ -148,7 +176,9 @@ init_task(Parent, Module, Options) ->
             init_done(Parent, {error, Reason})
     end.
 
-init_finish_task(Parent, TaskID, Module, Result) ->
+-spec init_finish_task(pid(), pid(), term(), atom(), list()) -> term().
+init_finish_task(ProxyPid, Parent, TaskID, Module, Result) ->
+    release_supervisor(ProxyPid),
     ok = claim_task_id(TaskID, Parent),
     lager:info("task restarted just to finish"),
     _ = init_done(Parent, {ok, self(), Result}),
@@ -165,8 +195,12 @@ claim_task_id(UniqueID, Parent) ->
             exit(shutdown)
     end.
 
+release_supervisor(Parent) ->
+    proc_lib:init_ack(Parent, {ok, self()}).
+
 init_done(Parent, Result) ->
-    proc_lib:init_ack(Parent, Result).
+    Parent ! {?MODULE, self(), init_done, Result},
+    ok.
 
 finish_init_task({ok, TaskID, Result, State}, Parent, Module) ->
     finish_init_task(TaskID, Result, State, infinity, Parent, Module);

@@ -20,7 +20,7 @@ dc:
 	$(REBAR) compile skip_deps=true
 
 test: dc
-	ERL_FLAGS="-config $(CONFIG_TESTS)" $(REBAR) eunit skip_deps=true
+	$(REBAR) eunit skip_deps=true
 
 xref: dc
 	$(REBAR) xref
